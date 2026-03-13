@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <script src="https://d3js.org/d3.v6.js"></script>
+        <link rel="stylesheet" href="styles.css">
+    </head>
+    <body>
+        <h1>There is Indeed Logic Behind Vaccine Claims</h1>
+        <p>by Jean Cheng</p>
+        <p>
+            Recently, I came across an anti-vax data story from 2013 titled <a href="https://healthimpactnews.com/2013/is-there-any-logic-behind-vaccine-claims/">Is There Any Logic Behind Vaccine Claims?</a> by Brian Shilhavy. Using misleading visualizations, Shilhavy argues that vaccinations are largely responsible for infant deaths in the US. He begins with the following infographic and caption:
+        </p>
+        <div class="infographic">
+            <img src="assets/infographic.png">
+            <img src="assets/caption.png">
+        </div>
+        <p>
+            Shilhavy posits that the US has high infant mortality but low overall mortality. Since the US administers the most vaccines to infants than any other country, he concludes that vaccines are what's killing babies, as other factors would have been reflected in the overal mortality. At first glance, everything seems logically sound, even if one doesn't agree with anti-vax ideas.
+        </p>
+        <p>
+            Let's first investigate his claim about the US having the highest infant mortality rates (IMR), though. The visualization I've created on the right uses slightly newer 2014 data from the <a href="https://web.archive.org/web/20230609035312/https://www.cia.gov/the-world-factbook/about/archives/download/factbook-2015.zip">CIA World Factbook 2015</a> (which reports on the previous year) instead of the 2009 World Factbook data that Shilhavy uses. The official Factbook was just recently shut down, so 2014 was the earliest well-organized data that I could get from the Wayback Machine. But why was Shilhavy even using 2009 data in 2013, considering the 2012 World Factbook data was readily available at the time?
+        </p>
+        <div class="comparison">
+            <img src="assets/imr.png" class="original">
+            <div class="visualization">
+                <div id="imr-svg"></div>
+                <div class="toggle-box" id="imr-country-box">
+                    <label class="toggle">
+                        <input type="checkbox" id="imr-country-checkbox">
+                        <span class="slider"></span>
+                    </label>
+                    <strong>Reveal all countries</strong>
+                </div>
+            </div>
+        </div>
+        <script>
+            // IMR visualization with toggle to reveal all countries
+
+            // Set dimensions and margins
+            const imrMargin = {top: 50, right: 50, bottom: 50, left: 150},
+                imrWidth = 350 - imrMargin.left - imrMargin.right,
+                imrHeight = 600 - imrMargin.top - imrMargin.bottom;
+
+            // Create SVG
+            const imrSvg = d3.select("#imr-svg")
+                .append("svg")
+                .attr("width", imrWidth + imrMargin.left + imrMargin.right)
+                .attr("height", imrHeight + imrMargin.top + imrMargin.bottom)
+                .append("g")
+                .attr("transform", `translate(${imrMargin.left}, ${imrMargin.top})`);
+
+            // Read IMR data
+            d3.csv("data/imr.csv", d => {
+                return {
+                    rank: +d["Rank"],
+                    country: d["Country"],
+                    imr: +d["Deaths per 1,000 Live Births"]
+                };
+            }).then(data => {
+                // US info
+                const usIndex = data.findIndex(d => d.country === "United States");
+                const smallData = data.slice(usIndex);
+                const currUsIndex = smallData.findIndex(d => d.country === "United States");
+
+                // Add axes
+                const x = d3.scaleLinear()
+                    .domain([0, d3.max(smallData, d => d.imr)])
+                    .range([0, imrWidth]);
+                const y = d3.scaleBand()
+                    .domain(smallData.map(d => d.country))
+                    .range([0, imrHeight])
+                    .padding(0.2);
+                const xAxis = imrSvg.append("g")
+                    .attr("transform", `translate(0, ${imrHeight})`)
+                    .call(d3.axisBottom(x).ticks(6));
+
+                // Add y-axis ticks
+                const maxLabels = Math.floor(imrHeight / 20);
+                const step = Math.ceil(y.domain().length / maxLabels);
+                const tickCountries = y.domain().filter((d, i) =>
+                        (i % step === 0 && Math.abs(i - currUsIndex) >= step)
+                        || i === currUsIndex
+                    );
+                const yAxis = imrSvg.append("g")
+                    .call(d3.axisLeft(y).tickValues(tickCountries));
+                
+                // Add title and axis labels
+                imrSvg.append("text")
+                    .attr("class", "svg-title")
+                    .attr("x", imrWidth / 2)
+                    .attr("y", -30)
+                    .text("2014 Infant Mortality Rates");
+                imrSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", imrWidth / 2)
+                    .attr("y", imrHeight + 40)
+                    .text("Deaths per 1,000 Live Births");
+                imrSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", imrHeight / 2)
+                    .attr("y", 135)
+                    .attr("transform", "rotate(90)")
+                    .text("Countries");
+
+                // Add bars
+                const bars = imrSvg.append("g");
+                bars.selectAll("rect")
+                    .data(smallData)
+                    .join("rect")
+                    .attr("x", 0)
+                    .attr("y", d => y(d.country))
+                    .attr("width", d => x(d.imr))
+                    .attr("height", y.bandwidth())
+                    .style("fill", d => d.country === "United States" ? "#e51212" : "#6191c4");
+
+                // Add US rank label
+                const rankLabel = imrSvg.append("g");
+                rankLabel.selectAll(".svg-bar-label")
+                    .data(smallData.filter(d => d.country === "United States"))
+                    .join("text")
+                    .attr("class", "svg-bar-label")
+                    .attr("x", d => x(d.imr) + 8)
+                    .attr("y", d => y(d.country) + y.bandwidth())
+                    .text("#1");
+
+                // Set country toggle
+                d3.select("#imr-country-checkbox").on("change", function() {
+                    const currData = this.checked ? data : smallData;
+                    const currUsIndex = currData.findIndex(d => d.country === "United States");
+
+                    // Set axes
+                    x.domain([0, d3.max(currData, d => d.imr)])
+                    y.domain(currData.map(d => d.country));
+                    xAxis.transition().duration(500)
+                        .call(d3.axisBottom(x).ticks(6));
+                    
+                    // Set y-axis ticks
+                    const maxLabels = Math.floor(imrHeight / 20);
+                    const step = Math.ceil(y.domain().length / maxLabels);
+                    const tickCountries = y.domain().filter((d, i) =>
+                        (i % step === 0 && Math.abs(i - currUsIndex) >= step)
+                        || i === currUsIndex
+                    );
+                    yAxis.transition().duration(500)
+                        .call(d3.axisLeft(y).tickValues(tickCountries));
+
+                    // Exit, update, and enter bars
+                    const currBars = bars.selectAll("rect")
+                        .data(currData, d => d.country);
+                    currBars.enter()
+                        .append("rect")
+                        .attr("x", 0)
+                        .attr("y", 0)
+                        .attr("width", d => x(d.imr))
+                        .attr("height", y.bandwidth())
+                        .style("fill", d => d.country === "United States" ? "#e51212" : "#6191c4")
+                        .style("opacity", 0)
+                        .transition().duration(500)
+                        .attr("y", d => y(d.country))
+                        .style("opacity", 1);
+                    currBars.transition().duration(500)
+                        .attr("y", d => y(d.country))
+                        .attr("width", d => x(d.imr))
+                        .attr("height", y.bandwidth());
+                    currBars.exit()
+                        .transition().duration(500)
+                        .attr("y", 0)
+                        .style("opacity", 0)
+                        .remove();
+
+                    // Set US rank label
+                    rankLabel.selectAll(".svg-bar-label")
+                        .data(currData.filter(d => d.country === "United States"))
+                        .join("text")
+                        .attr("class", "svg-bar-label")
+                        .transition().duration(500)
+                        .attr("x", d => x(d.imr) + 8)
+                        .attr("y", d => y(d.country) + y.bandwidth())
+                        .text(d => "#" + (this.checked ? d.rank : 1));
+
+                    // Stop animation
+                    d3.select("#imr-country-box").style("animation", "none");
+                })
+            });
+        </script>
+        <p>
+            Wow! So looks like the US <em>is</em> #1! Out of... the lowest 56? So it's #169 out of 224? While I would still say 169th means we have a lot of room for improvement, it's definitely not the alarmingly high #1 out of 224. Shilhavy creates this illusion by conveniently cutting off the data points right above the US instead of showing the whole picture. This distorts the viewer's sense of scale and comparison with other countries, kind of like an Asian mom who only compares you with those better than you. He also says in his graph title that it depicts the "top 34 nations." However, it's actually the top 34 nations with the <em>lowest</em> IMR, a.k.a. the bottom 34. You could say that, by "top", he means the nations that are doing the best in terms of low IMR. But then his claim of the US being #1 makes no sense because the US would then be the lowest of the top 34.
+        </p>
+        <p>
+            Next, we'll take a look at overall death using the same <a href="https://web.archive.org/web/20230609035312/https://www.cia.gov/the-world-factbook/about/archives/download/factbook-2015.zip">CIA World Factbook 2015</a> data.
+        </p>
+        <div class="comparison">
+            <img src="assets/death.png" class="original">
+            <div class="visualization">
+                <div id="death-svg"></div>
+                <div class="toggle-box-container">
+                    <div class="toggle-box" id="death-country-box">
+                        <label class="toggle">
+                            <input type="checkbox" id="death-country-checkbox">
+                            <span class="slider"></span>
+                        </label>
+                        <strong>Reveal all countries</strong>
+                    </div>
+                    <div class="toggle-box" id="death-axis-box">
+                        <label class="toggle">
+                            <input type="checkbox" id="death-axis-checkbox">
+                            <span class="slider"></span>
+                        </label>
+                        <strong>Fix y-axis</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            // Death visualization with toggles to reveal all countries and flip order
+            
+            // Set dimensions and margins
+            const deathMargin = {top: 50, right: 50, bottom: 50, left: 150},
+                deathWidth = 457 - deathMargin.left - deathMargin.right,
+                deathHeight = 600 - deathMargin.top - deathMargin.bottom;
+
+            // Create SVG
+            deathSvg = d3.select("#death-svg")
+                .append("svg")
+                .attr("width", deathWidth + deathMargin.left + deathMargin.right)
+                .attr("height", deathHeight + deathMargin.top + deathMargin.bottom)
+                .append("g")
+                .attr("transform", `translate(${deathMargin.left}, ${deathMargin.top})`);
+
+            // Read death data
+            d3.csv("data/death.csv", d => {
+                return {
+                    rank: +d["Rank"],
+                    country: d["Country"],
+                    death: +d["Deaths per 1,000 Population"]
+                };
+            }).then(data => {
+                // US info
+                const usIndex = data.findIndex(d => d.country === "United States");
+                smallData = data.slice(usIndex);
+                const currUsIndex = smallData.findIndex(d => d.country === "United States");
+
+                // Add axes
+                const x = d3.scaleLinear()
+                    .domain([0, d3.max(smallData, d => d.death)])
+                    .range([0, deathWidth]);
+                const y = d3.scaleBand()
+                    .domain(smallData.map(d => d.country))
+                    .range([deathHeight, 0])
+                    .padding(0.2);
+                const xAxis = deathSvg.append("g")
+                    .attr("transform", `translate(0, ${deathHeight})`)
+                    .call(d3.axisBottom(x).ticks(6));
+
+                // Add y-axis ticks
+                const maxLabels = Math.floor(deathHeight / 20);
+                const step = Math.ceil(y.domain().length / maxLabels);
+                const tickCountries = y.domain().filter((d, i) =>
+                        (i % step === 0 && Math.abs(i - currUsIndex) >= step)
+                        || i === currUsIndex
+                    );
+                const yAxis = deathSvg.append("g")
+                    .call(d3.axisLeft(y).tickValues(tickCountries));
+                
+                // Add title and axis labels
+                deathSvg.append("text")
+                    .attr("class", "svg-title")
+                    .attr("x", deathWidth / 2)
+                    .attr("y", -30)
+                    .text("2014 Death Rates");
+                deathSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", deathWidth / 2)
+                    .attr("y", deathHeight + 40)
+                    .text("Deaths per 1,000 Population");
+                deathSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", deathHeight / 2)
+                    .attr("y", 135)
+                    .attr("transform", "rotate(90)")
+                    .text("Countries");
+
+                // Add bars
+                const bars = deathSvg.append("g");
+                bars.selectAll("rect")
+                    .data(smallData)
+                    .join("rect")
+                    .attr("x", 0)
+                    .attr("y", d => y(d.country))
+                    .attr("width", d => x(d.death))
+                    .attr("height", y.bandwidth())
+                    .style("fill", d => d.country === "United States" ? "#ae323c" : "#8356ab");
+
+                // Add US rank label
+                const rankLabel = deathSvg.append("g");
+                rankLabel.selectAll(".svg-bar-label")
+                    .data(smallData.filter(d => d.country === "United States"))
+                    .join("text")
+                    .attr("class", "svg-bar-label")
+                    .attr("x", d => x(d.death) + 8)
+                    .attr("y", d => y(d.country) + y.bandwidth())
+                    .text("#225");
+
+                // Set country toggle
+                d3.select("#death-country-checkbox").on("change", function() {
+                    const allCountries = this.checked;
+                    const fixedAxis = d3.select("#death-axis-checkbox").property("checked");
+                    const currData = allCountries ? data : smallData;
+                    const currUsIndex = currData.findIndex(d => d.country === "United States");
+
+                    // Set axes
+                    x.domain([0, d3.max(currData, d => d.death)])
+                    y.domain(currData.map(d => d.country));
+                    xAxis.transition().duration(500)
+                        .call(d3.axisBottom(x).ticks(6));
+                    
+                    // Set y-axis ticks
+                    const maxLabels = Math.floor(deathHeight / 20);
+                    const step = Math.ceil(y.domain().length / maxLabels);
+                    const tickCountries = y.domain().filter((d, i) =>
+                        (i % step === 0 && Math.abs(i - currUsIndex) >= step)
+                        || i === currUsIndex
+                    );
+                    yAxis.transition().duration(500)
+                        .call(d3.axisLeft(y).tickValues(tickCountries));
+
+                    // Exit, update, and enter bars
+                    const transitionY = fixedAxis ? 0 : deathHeight;
+                    const currBars = bars.selectAll("rect")
+                        .data(currData, d => d.country);
+                    currBars.enter()
+                        .append("rect")
+                        .attr("x", 0)
+                        .attr("y", transitionY)
+                        .attr("width", d => x(d.death))
+                        .attr("height", y.bandwidth())
+                        .style("fill", d => d.country === "United States" ? "#ae323c" : "#8356ab")
+                        .style("opacity", 0)
+                        .transition().duration(500)
+                        .attr("y", d => y(d.country))
+                        .style("opacity", 1);
+                    currBars.transition().duration(500)
+                        .attr("y", d => y(d.country))
+                        .attr("width", d => x(d.death))
+                        .attr("height", y.bandwidth());
+                    currBars.exit()
+                        .transition().duration(500)
+                        .attr("y", transitionY)
+                        .style("opacity", 0)
+                        .remove();
+
+                    // Set US rank label
+                    rankLabel.selectAll(".svg-bar-label")
+                        .data(currData.filter(d => d.country === "United States"))
+                        .join("text")
+                        .attr("class", "svg-bar-label")
+                        .transition().duration(500)
+                        .attr("x", d => x(d.death) + 8)
+                        .attr("y", d => y(d.country) + y.bandwidth())
+                        .text(d => {
+                            if (allCountries) {
+                                return "#" + (fixedAxis ? d.rank : 226 - d.rank);
+                            } else {
+                                return "#" + (fixedAxis ? 1 : 225);
+                            }
+                        });
+
+                    // Stop animation
+                    d3.select("#death-country-box").style("animation", "none");
+                })
+
+                // Set y-axis toggle
+                d3.select("#death-axis-checkbox").on("change", function() {
+                    const allCountries = d3.select("#death-country-checkbox").property("checked");
+                    const fixedAxis = this.checked;
+                    const currData = allCountries ? data : smallData;
+                    const currUsIndex = currData.findIndex(d => d.country === "United States");
+                    
+                    // Set y-axis
+                    y.range(fixedAxis ? [0, deathHeight] : [deathHeight, 0]);
+                    const maxLabels = Math.floor(deathHeight / 20);
+                    const step = Math.ceil(y.domain().length / maxLabels);
+                    const tickCountries = y.domain().filter((d, i) =>
+                        (i % step === 0 && Math.abs(i - currUsIndex) >= step)
+                        || i === currUsIndex
+                    );
+                    yAxis.transition().duration(500)
+                        .call(d3.axisLeft(y).tickValues(tickCountries));
+
+                    // Set bar order
+                    bars.selectAll("rect")
+                        .transition().duration(500)
+                        .attr("y", d => y(d.country))
+
+                    // Set US rank label
+                    rankLabel.selectAll(".svg-bar-label")
+                        .data(currData.filter(d => d.country === "United States"))
+                        .join("text")
+                        .attr("class", "svg-bar-label")
+                        .transition().duration(500)
+                        .attr("y", d => y(d.country) + y.bandwidth())
+                        .text(d => {
+                            if (allCountries) {
+                                return "#" + (fixedAxis ? d.rank : 226 - d.rank);
+                            } else {
+                                return "#" + (fixedAxis ? 1 : 225);
+                            }
+                        });
+
+                    // Stop animation
+                    d3.select("#death-axis-box").style("animation", "none");
+                })
+            });
+        </script>
+        <p>
+            Shilhavy says the US is last in deaths. So the US has the lowest death rate out of all countries? Actually, no! For this graph, he not only reuses the same zooming-in tactic as before but also adds on another trick: flipping the y-axis. The other two graphs in the infographic placed the highest value at the top, but this one puts it at the bottom. Shilhavy further hides this change by removing the values on each bar and instead opting for less noticeable tick marks in lighter font at the bottom. The average, busy reader—who doesn't stop to study every visual feature in detail—may not pick up on this unexpected change. They are misled into accepting his claim that the US is ranked last in deaths when, in reality, they are 94th highest out of 225.
+        </p>
+        <p>
+            Thirdly, Shilhavy asserts that the US administers the most vaccines to infants. He draws from the 2008-2009 immunization schedules in <a href="https://journals.sagepub.com/doi/10.1177/0960327111407644#table2-0960327111407644">Human & Experimental Toxicology</a> for his graph. Contrary to its title, "Summary of International Immunization Schedules," the dataset does not provide an objective international summary as it includes only the 34 countries with an IMR less than or equal to the US. Therefore, the set of countries is somewhat arbitrary. I was unfortunately unable to find a usable dataset on the topic, so my visualization uses this same data. You can also see the exact counts of each vaccine type by hovering over any bar. Note that each shot of DTaP contains 3 separate vaccines (for diphtheria, tetanus, and pertussis), so each DTaP dose actually counts as 3 vaccine doses.
+        </p>
+        <div class="comparison">
+            <img src="assets/immunization.png" class="original">
+            <div class="visualization">
+                <div id="imm-svg"></div>
+                <div id="imm-tooltip"></div>
+            </div>
+        </div>
+        <script>
+            // Immunization visualization with vaccine breakdown
+
+             // Set dimensions and margins
+            const immMargin = {top: 50, right: 150, bottom: 50, left: 150},
+                immWidth = 550 - immMargin.left - immMargin.right,
+                immHeight = 600 - immMargin.top - immMargin.bottom;
+
+            // Create SVG
+            const immSvg = d3.select("#imm-svg")
+                .append("svg")
+                .attr("width", immWidth + immMargin.left + immMargin.right)
+                .attr("height", immHeight + immMargin.top + immMargin.bottom)
+                .append("g")
+                .attr("transform", `translate(${immMargin.left}, ${immMargin.top})`);
+
+            // Read immunization data
+            d3.csv("data/immunization.csv", d => {
+                return {
+                    country: d["Country"],
+                    DTaP: +d["DTaP"],
+                    Polio: +d["Polio"],
+                    Hib: +d["Hib"],
+                    HepB: +d["HepB"],
+                    Pneumo: +d["Pneumo"],
+                    Rota: +d["Rota"],
+                    MenBC: +d["MenBC"],
+                    MenC: +d["MenC"],
+                    HepA: +d["HepA"],
+                    BCG: +d["BCG"],
+                    Flu: +d["Flu"],
+                    total: +d["Total doses"]
+                };
+            }).then(data => {
+                // US info
+                const usIndex = data.findIndex(d => d.country === "United States");
+
+                // Add axes
+                const x = d3.scaleLinear()
+                    .domain([0, d3.max(data, d => d.total)])
+                    .range([0, immWidth]);
+                const y = d3.scaleBand()
+                    .domain(data.map(d => d.country))
+                    .range([0, immHeight])
+                    .padding(0.2);
+                const xAxis = immSvg.append("g")
+                    .attr("transform", `translate(0, ${immHeight})`)
+                    .call(d3.axisBottom(x).ticks(6));
+                const yAxis = immSvg.append("g")
+                    .call(d3.axisLeft(y));
+                
+                // Add title, subtitle, and axis labels
+                immSvg.append("text")
+                    .attr("class", "svg-title")
+                    .attr("x", immWidth / 2)
+                    .attr("y", -30)
+                    .text("2008-2009 Immunization Schedules Prior to 1 Year of Age");
+                immSvg.append("text")
+                    .attr("class", "svg-subtitle")
+                    .attr("x", immWidth / 2)
+                    .attr("y", -12)
+                    .text("Of the 34 Countries with the Lowest IMR");
+                immSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", immWidth / 2)
+                    .attr("y", immHeight + 40)
+                    .text("# of Recommended/Required Vaccine Doses");
+                immSvg.append("text")
+                    .attr("class", "svg-axis-label")
+                    .attr("x", immHeight / 2)
+                    .attr("y", 135)
+                    .attr("transform", "rotate(90)")
+                    .text("Countries");
+
+                // Add tooltip
+                const tooltip = d3.select("#imm-tooltip")
+
+                // Add bars
+                const immKeys = [
+                    "DTaP","Polio","Hib","HepB","Pneumo",
+                    "Rota","MenBC","MenC","HepA","BCG","Flu"
+                    ];
+                const stackedData = d3.stack().keys(immKeys)(data);
+                const immColor = d3.scaleOrdinal()
+                    .domain(immKeys)
+                    .range(d3.schemeSet3);
+
+                const bars = immSvg.append("g")
+                    .selectAll("g")
+                    .data(stackedData)
+                    .join("g")
+                    .attr("fill", d => immColor(d.key))
+                    .selectAll("rect")
+                    .data(d => d)
+                    .join("rect")
+                    .attr("x", d => x(d[0]))
+                    .attr("y", d => y(d.data.country))
+                    .attr("width", d => x(d[1]) - x(d[0]))
+                    .attr("height", y.bandwidth())
+                    .on("mouseover", function(e, d) {
+                        const vaccine = d3.select(this.parentNode)
+                                    .datum().key;
+                        let doses = d[1] - d[0];
+                        if (vaccine === "DTaP") {
+                            doses = `${doses / 3} (${doses})`;
+                        }
+
+                        tooltip.style("visibility", "visible")
+                            .html(`
+                                Country: ${d.data.country}<br>
+                                Vaccine: ${vaccine}<br>
+                                Doses: ${doses}
+                            `);
+                    })
+                    .on("mousemove", function(e) {
+                        tooltip
+                            .style("left", e.pageX + "px")
+                            .style("top", e.pageY + "px")
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("visibility", "hidden");
+                    });
+
+                // Add legend
+                const legend = immSvg.append("g")
+                    .attr("transform", `translate(${immWidth + 20},0)`);
+                immKeys.forEach((key, i) => {
+                    const legendSegment = legend.append("g")
+                        .attr("transform", `translate(20,${i*18})`);
+                    legendSegment.append("rect")
+                        .attr("width", 12)
+                        .attr("height", 12)
+                        .attr("fill", immColor(key));
+                    legendSegment.append("text")
+                        .attr("x", 18)
+                        .attr("y", 10)
+                        .text(key)
+                        .style("font-size", "10pt");
+                });
+            });
+        </script>
+        <p>
+            Like previously mentioned, the US being #1 here means very little when only 34 countries were represented in the data. At the very least, we can conclude that the US administers more infant vaccines than the 33 countries with the lowest IMRs. I also noticed that, after I manually summed each dose, the original dataset appeared to miscount Belgium's vaccine total as 19 instead of 20. I was certainly not expecting to find a basic aritmetic error in a published paper.
+        </p>
+        <p>
+            Let's also revisit Shilhavy's "scary" baby vaccine visualization. This time, we'll make it actually informative by adding immunity information from the <a href="https://www.vaccinesafety.edu/vaccines/">Institute for Vaccine Safety</a>. The immunity percentages tell us how much each vaccine lowers the risk of infection in children who have completed the entire vaccine series. However, this includes doses taken during early childhood after 1 year of age. I could not locate a dataset detailing the effects of vaccines doses only administered before 1 year of age, but the effectiveness of each vaccine relies on its series starting during infancy, so I still felt this data was significant enough to include. As for the images in my visualization, the baby is from <a href="https://www.nicepng.com/ourpic/u2e6e6o0q8a9a9e6_happy-african-american-baby-african-baby/">NicePNG</a> and the syringe is from <a href="https://pixabay.com/illustrations/syringe-shot-needle-vaccination-1884787/">Pixabay</a>.
+        </p>
+        <div class="wide-comparison">
+            <img src="assets/usImmunization.png">
+            <img src="assets/usImmunizationNew.png">
+        </div>
+        <p>
+            As shown in my visualization, the administration of these many vaccines on infants has a significant positive impact on their health. They are highly effective at protecting children from fatal diseases. Also, I personally feel that using needles to represent vaccine doses is not the most fitting when it comes to DTaP, as each singular needle shot contains 3 vaccines and is therefore represented with 3 needles. This makes the 3 DTaP shots look like 9. I couldn't think of a better vaccine icon, though, so I did not address this issue.
+        </p>
+        <p>
+            All in all, for such a rich country, the US unfortunately ranks higher than it should in both infant death (169th highest) and general death (94th highest) out of 224-225 nations. However, the important thing to note is that the infant death ranking is significantly lower than the one for general death. American infants die less often compared to other countries than the overall American population, and the US administers a greater number of infant vaccines than the 33 countries with the lowest IMRs. This suggests that vaccines may improve the chances of infant survival. I won't stoop to Shilhavy's level and say that correlation definitely means causation, but I do think his argument that vaccines cause infant deaths is unfounded and highly unlikely. Nevertheless, I will defer to the actual research and resulting claims of reputable institutions such as the Institute for Vaccine Safety and the CDC, an act that Shilhavy calls in his article "simply an appeal to authority and not logical." If the purpose of vaccination is to improve health, the general trends appear as if vaccination improves health, and reputably-sourced research that is rigorous, systematic, and evidence-based shows that vaccination improves health, I think choosing to reject these claims and actively manipulating others into doing so as well is the truly illogical course of action in this case.
+        </p>
+        <h2>
+            References
+        </h2>
+        <div class="bib">
+            <div>Brian, S. (2013, February 7). <i>Is there any logic behind vaccine claims?</i> https://healthimpactnews.com/2013/is-there-any-logic-behind-vaccine-claims/</div>
+            <div><i>Happy African American baby—African baby</i>. (n.d.). NicePNG. Retrieved https://www.nicepng.com/ourpic/u2e6e6o0q8a9a9e6_happy-african-american-baby-african-baby/</div>
+            <div>Miller, N. Z., &amp; Goldman, G. S. (2011). Infant mortality rates regressed against number of vaccine doses routinely given: Is there a biochemical or synergistic toxicity? <i>Human &amp; Experimental Toxicology</i>, <i>30</i>(9), 1420-1428. https://doi.org/10.1177/0960327111407644</div>
+            <div><i>Syringe, shot, needle</i>. (n.d.). Pixabay. Retrieved https://pixabay.com/illustrations/syringe-shot-needle-vaccination-1884787/</div>
+            <div><i>The World Factbook</i>. (n.d.). Wayback Machine. Retrieved https://web.archive.org/web/20221024162701/https://www.cia.gov/the-world-factbook/about/archives/download/factbook-2015.zip</div>
+            <div><i>Vaccines</i>. (n.d.). Institute for Vaccine Safety. Retrieved https://www.vaccinesafety.edu/vaccines/</div>
+        </div>
+        <p>
+            I used GPT-5.3 to assist with debugging and to supplement official documentation for learning about D3 features.
+        </p>
+    </body>
+</html>
